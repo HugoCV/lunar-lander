@@ -4,9 +4,10 @@ import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 
 from app.rl.utils import set_seed, normalize_state
+from app.rl.dqn import DQNAgent
 from app.rl import config as C
 
-def record_video(agent, folder: str = "./videos", episodes: int = 1, max_steps: int = None) -> Optional[str]:
+def record_video(agent: DQNAgent, folder: str = "./videos", episodes: int = 1, max_steps: int = None) -> Optional[str]:
     os.makedirs(folder, exist_ok=True)
     max_steps = max_steps or C.MAX_STEPS
 

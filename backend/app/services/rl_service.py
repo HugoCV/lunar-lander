@@ -1,98 +1,85 @@
-from typing import Optional, List, Dict, Any, Tuple
-from threading import Event, Thread, Lock
-import time
+from threading import Thread, Event
+from typing import Optional, List, Tuple
+import gymnasium as gym
 
 from app.rl.trainer import run_training
-from app.rl.evaluator import evaluate as eval_agent
-from app.rl.video import record_video as record_video_fn
+from app.rl.evaluator import evaluate as evaluate_agent
+from app.rl.video import record_video as record_video_for_agent
+from app.rl.dqn import DQNAgent
+from app.core.paths import VIDEOS_DIR
+from app.rl import config as C
 
-_state: Dict[str, Any] = {
-    "running": False,
-    "hasAgent": False,
-    "thread": None,
-    "stop": Event(),
-    "agent": None,
-    "episodes": 0,
-    "last_reward": None,
-    "epsilon": None,
-    "mem": 0,
-    "history": [],
-}
-_lock = Lock()
+class RLService:
+    def __init__(self):
+        self._thread: Optional[Thread] = None
+        self._stop_event: Optional[Event] = None
+        self.history: List[Tuple[int, float]] = []
+        self.last_reward: Optional[float] = None
+        self.epsilon: Optional[float] = None
+        self.memory_size: int = 0
 
-def _on_step(ep: int, t: int, r: float, eps: float, mem: int):
-    with _lock:
-        _state["epsilon"] = eps
-        _state["mem"] = mem
+    def _on_episode_end(self, episode: int, reward: float, epsilon: float):
+        self.history.append((episode, reward))
+        self.last_reward = reward
+        self.epsilon = epsilon
 
-def _on_episode(ep: int, total: float, eps: float):
-    with _lock:
-        _state["episodes"] = ep
-        _state["last_reward"] = total
-        _state["epsilon"] = eps
-        _state["history"].append((ep, total))
-        if len(_state["history"]) > 5000:
-            _state["history"] = _state["history"][-2000:]
+    def _on_step(self, ep, t, r, eps, mem_size):
+        self.memory_size = mem_size
 
-def _trainer_loop():
-    try:
-        agent = run_training(
-            on_step=_on_step,
-            on_episode=_on_episode,
-            stop_event=_state["stop"],
-        )
-        with _lock:
-            _state["agent"] = agent
-            _state["hasAgent"] = True
-    finally:
-        with _lock:
-            _state["running"] = False
-
-def start():
-    with _lock:
-        if _state["running"]:
+    def start(self):
+        if self.is_running():
             return
-        _state["stop"].clear()
-        _state["running"] = True
-        _state["history"].clear()
-        _state["episodes"] = 0
-        _state["last_reward"] = None
-        _state["epsilon"] = None
-        _state["mem"] = 0
-        th = Thread(target=_trainer_loop, daemon=True)
-        _state["thread"] = th
-        th.start()
+        self.history = []
+        self.last_reward = None
+        self.epsilon = None
+        self.memory_size = 0
+        self._stop_event = Event()
+        self._thread = Thread(target=run_training, kwargs={
+            "on_step": self._on_step,
+            "on_episode": self._on_episode_end,
+            "stop_event": self._stop_event
+        })
+        self._thread.start()
 
-def stop():
-    with _lock:
-        if not _state["running"]:
-            return
-        _state["stop"].set()
+    def stop(self):
+        if self._stop_event:
+            self._stop_event.set()
 
-def status() -> Dict[str, Any]:
-    with _lock:
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def status(self):
         return {
-            "running": _state["running"],
-            "hasAgent": _state["hasAgent"],
-            "episodes": _state["episodes"],
-            "lastReward": _state["last_reward"],
-            "epsilon": _state["epsilon"],
-            "memorySize": _state["mem"],
-            "historyTail": _state["history"][-50:],
+            "running": self.is_running(),
+            "hasAgent": len(self.history) > 0,
+            "episodes": len(self.history),
+            "lastReward": self.last_reward,
+            "epsilon": self.epsilon,
+            "memorySize": self.memory_size,
+            "historyTail": self.history[-100:]
         }
 
-def evaluate() -> Tuple[bool, float, List[float]]:
-    with _lock:
-        agent = _state["agent"]
-    if agent is None:
-        return False, 0.0, []
-    mean, scores = eval_agent(agent, episodes=3)
-    return True, mean, scores
+    def _create_agent_with_weights(self, weights_file: Optional[str]) -> DQNAgent:
+        """Helper to create an agent and load specific weights."""
+        # We need state and action size from the environment
+        env = gym.make(C.ENV_ID)
+        state_size = env.observation_space.shape[0]
+        action_size = env.action_space.n
+        env.close()
+        
+        agent = DQNAgent(state_size, action_size)
+        agent.load(weights_file=weights_file)
+        return agent
 
-def record_video() -> Tuple[bool, Optional[str]]:
-    with _lock:
-        agent = _state["agent"]
-    if agent is None:
-        return False, None
-    web_path = record_video_fn(agent, folder="./videos", episodes=1)
-    return (web_path is not None), web_path
+    def evaluate(self, weights_file: Optional[str] = None):
+        agent = self._create_agent_with_weights(weights_file)
+        mean, scores = evaluate_agent(agent)
+        return True, mean, scores
+
+    def record_video(self, weights_file: Optional[str] = None):
+        agent = self._create_agent_with_weights(weights_file)
+        path = record_video_for_agent(agent, folder=str(VIDEOS_DIR))
+        return True, path
+
+# Singleton instance
+rl_service = RLService()

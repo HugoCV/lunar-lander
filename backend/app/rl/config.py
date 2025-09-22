@@ -19,6 +19,6 @@ ENV_ID = "LunarLander-v3"
 SEED = 0
 EPISODES = 2000
 # --- Persistence ---
-# Path for the single model weights file
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
-MODEL_PATH = os.path.join(DATA_DIR, "lunar_lander_dqn.npz")
+from app.core.paths import WEIGHTS_DIR
+# Default name for the experiment run
+EXPERIMENT_NAME = "lunar_lander_dqn"

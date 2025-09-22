@@ -21,6 +21,9 @@ import {
   Tooltip as MuiTooltip,
   LinearProgress,
   alpha,
+  Select,
+  MenuItem,
+  FormControl,
   useTheme,
   useMediaQuery,
 } from "@mui/material";
@@ -77,14 +80,20 @@ async function stopTraining() {
   const { data } = await api.post("/train/stop");
   return data;
 }
-async function evaluateAgent() {
-  const { data } = await api.post("/train/evaluate");
+async function evaluateAgent(weightsFile?: string | null) {
+  const { data } = await api.post("/train/evaluate", { weights_file: weightsFile });
   return data as { ok: boolean; mean: number; scores: number[] };
 }
-async function recordVideo() {
-  const { data } = await api.post("/train/video");
+async function recordVideo(weightsFile?: string | null) {
+  const { data } = await api.post("/train/video", { weights_file: weightsFile });
   return data as { ok: boolean; path: string | null };
 }
+
+async function getWeights(): Promise<string[]> {
+  const { data } = await api.get("/train/weights");
+  return data;
+}
+
 
 // ——— Utils ———
 const fmt = (n: number | null | undefined, digits = 1, fallback = "—") =>
@@ -191,7 +200,7 @@ function RewardChart({
       ) : (
         <Box textAlign="center" py={6}>
           <Typography variant="body2" color="text.secondary">
-            Sin datos aún
+            No data yet
           </Typography>
         </Box>
       )}
@@ -206,6 +215,8 @@ export default function App() {
   const [status, setStatus] = useState<TrainStatus | null>(null);
   const [health, setHealth] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [availableWeights, setAvailableWeights] = useState<string[]>([]);
+  const [selectedWeights, setSelectedWeights] = useState<string>("");
   const [videoPath, setVideoPath] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     open: boolean;
@@ -249,14 +260,23 @@ export default function App() {
     getHealth().then(setHealth).catch(() => {});
   }, []);
 
+  // — Fetch available weights —
+  useEffect(() => {
+    getWeights().then(weights => {
+      console.log(weights);
+      setAvailableWeights(weights);
+      if (weights.length > 0) setSelectedWeights(weights[0]);
+    }).catch(() => {});
+  }, [status?.running]); // Refetch when training stops
+
   // — Actions —
   const onStart = async () => {
     setLoading(true);
     try {
       await startTraining();
-      setToast({ open: true, msg: "Entrenamiento iniciado", severity: "success" });
+      setToast({ open: true, msg: "Training started", severity: "success" });
     } catch (e: any) {
-      setToast({ open: true, msg: e?.message || "Error al iniciar", severity: "error" });
+      setToast({ open: true, msg: e?.message || "Error starting training", severity: "error" });
     } finally {
       setLoading(false);
     }
@@ -266,9 +286,9 @@ export default function App() {
     setLoading(true);
     try {
       await stopTraining();
-      setToast({ open: true, msg: "Señal de stop enviada", severity: "info" });
+      setToast({ open: true, msg: "Stop signal sent", severity: "info" });
     } catch (e: any) {
-      setToast({ open: true, msg: e?.message || "Error al detener", severity: "error" });
+      setToast({ open: true, msg: e?.message || "Error stopping training", severity: "error" });
     } finally {
       setLoading(false);
     }
@@ -277,20 +297,20 @@ export default function App() {
   const onEvaluate = async () => {
     setLoading(true);
     try {
-      const res = await evaluateAgent();
+      const res = await evaluateAgent(selectedWeights);
       if (res.ok) {
         setToast({
           open: true,
-          msg: `Evaluación OK. Mean=${res.mean.toFixed(1)} (${res.scores
+          msg: `Evaluation OK. Mean=${res.mean.toFixed(1)} (${res.scores
             .map((s) => s.toFixed(1))
             .join(", ")})`,
           severity: "success",
         });
       } else {
-        setToast({ open: true, msg: "No hay agente aún para evaluar", severity: "warning" });
+        setToast({ open: true, msg: "No agent available to evaluate", severity: "warning" });
       }
     } catch (e: any) {
-      setToast({ open: true, msg: e?.message || "Error en evaluación", severity: "error" });
+      setToast({ open: true, msg: e?.message || "Error during evaluation", severity: "error" });
     } finally {
       setLoading(false);
     }
@@ -299,7 +319,7 @@ export default function App() {
   const onVideo = async () => {
     setLoading(true);
     try {
-      const res = await recordVideo();
+      const res = await recordVideo(selectedWeights);
       if (res.ok && res.path) {
         const backendOrigin = new URL(
           import.meta.env.VITE_API_BASE || "http://localhost:8000/api/v1"
@@ -393,11 +413,29 @@ export default function App() {
               >
                 Stop
               </Button>
+            </Stack>
+            <Divider orientation={isMdUp ? "vertical" : "horizontal"} flexItem sx={{ my: isMdUp ? 0 : 1 }} />
+            <Stack direction="row" spacing={1} alignItems="center">
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <Select
+                  value={selectedWeights}
+                  onChange={(e) => setSelectedWeights(e.target.value)}
+                  disabled={loading || availableWeights.length === 0}
+                  displayEmpty
+                >
+                  <MenuItem value="" disabled>
+                    <em>Select weights</em>
+                  </MenuItem>
+                  {availableWeights.map((w) => (
+                    <MenuItem key={w} value={w}>{w}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <Button
                 variant="outlined"
                 startIcon={<AssessmentIcon />}
                 onClick={onEvaluate}
-                disabled={loading}
+                disabled={loading || !selectedWeights}
               >
                 Evaluate
               </Button>
@@ -405,26 +443,15 @@ export default function App() {
                 variant="outlined"
                 startIcon={<VideocamIcon />}
                 onClick={onVideo}
-                disabled={loading}
+                disabled={loading || !selectedWeights}
               >
                 Record Video
               </Button>
+            </Stack>
+            <Stack direction="row" spacing={1} flexGrow={1} justifyContent="flex-end">
               {loading && <CircularProgress size={22} sx={{ ml: 1 }} />}
             </Stack>
 
-            {videoUrl && (
-              <Paper sx={{ p: 1, ml: { md: 2 }, borderRadius: 2 }}>
-                <Typography variant="body2">
-                  Último video:&nbsp;
-                  <Link href={videoUrl} underline="hover" target="_blank" rel="noreferrer">
-                    {videoUrl}
-                  </Link>
-                </Typography>
-                <Box mt={1} sx={{ width: isMdUp ? 480 : "100%" }}>
-                  <video src={videoUrl} controls width="100%" style={{ borderRadius: 8 }} />
-                </Box>
-              </Paper>
-            )}
           </Stack>
         </Paper>
 
@@ -500,15 +527,15 @@ export default function App() {
             size="small"
             variant="outlined"
             color={rewardTrend >= 0 ? "success" : "error"}
-            label={`Tendencia (10 eps): ${rewardTrend >= 0 ? "+" : ""}${fmt(rewardTrend, 1)}`}
+            label={`Trend (10 eps): ${rewardTrend >= 0 ? "+" : ""}${fmt(rewardTrend, 1)}`}
           />
         </Box>
 
         {/* Video (full-width) */}
         {videoUrl && (
-          <Paper sx={{ p: 2, borderRadius: 3, mb: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Último video
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, mb: 2 }}>
+            <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+              Last Recorded Video
             </Typography>
             <Box sx={{ aspectRatio: "16 / 9", width: "100%" }}>
               <video

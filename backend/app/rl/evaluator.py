@@ -1,11 +1,12 @@
 import numpy as np
 import gymnasium as gym
 
+from app.rl.dqn import DQNAgent
 from app.rl.utils import set_seed, normalize_state
 from app.rl import config as C
 
 
-def evaluate(agent, episodes: int = 3):
+def evaluate(agent: DQNAgent, episodes: int = 3):
     """
     Evalúa el agente en modo greedy (sin exploración) durante N episodios
     y devuelve (mean_reward, lista_de_recompensas_por_ep).

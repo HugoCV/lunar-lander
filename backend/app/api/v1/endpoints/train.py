@@ -1,9 +1,14 @@
 from fastapi import APIRouter
-from app.services import rl_service
+from app.services.rl_service import rl_service
 from app.core.paths import VIDEOS_DIR
 from pathlib import Path
 import os
-from typing import List, Dict
+from typing import List, Dict, Optional
+from pydantic import BaseModel
+
+class EvalPayload(BaseModel):
+    weights_file: Optional[str] = None
+
 
 router = APIRouter()
 
@@ -22,13 +27,13 @@ def training_status():
     return rl_service.status()
 
 @router.post("/train/evaluate")
-def evaluate():
-    ok, mean, scores = rl_service.evaluate()
+def evaluate(payload: EvalPayload):
+    ok, mean, scores = rl_service.evaluate(weights_file=payload.weights_file)
     return {"ok": ok, "mean": mean, "scores": scores}
 
 @router.post("/train/video")
-def record_video():
-    ok, path = rl_service.record_video()
+def record_video(payload: EvalPayload):
+    ok, path = rl_service.record_video(weights_file=payload.weights_file)
     return {"ok": ok, "path": path}
 
 @router.get("/train/videos")

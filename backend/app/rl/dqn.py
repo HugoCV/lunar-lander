@@ -1,5 +1,7 @@
 import numpy as np
 import random
+import os
+import time
 from collections import deque
 from app.rl.networks import NeuralNetwork
 from app.rl import config as C  # global (gamma, batch_size, etc.)
@@ -28,17 +30,37 @@ class DQNAgent:
         self.target.hard_copy_from(self.model)
 
     def save(self):
-        """Saves model weights to the default path."""
-        print(f"Saving model to {C.MODEL_PATH}")
-        self.model.save_weights(C.MODEL_PATH)
+        """Saves weights to a file with a timestamp."""
+        timestamp = int(time.time())
+        filename = f"{C.EXPERIMENT_NAME}_{timestamp}.npz"
+        weights_path = os.path.join(C.WEIGHTS_DIR, filename)
+        print(f"Saving weights to {weights_path}")
+        self.model.save_weights(weights_path)
 
-    def load(self):
-        """Loads model weights from the default path."""
-        if self.model.load_weights(C.MODEL_PATH):
-            print(f"Loaded model from {C.MODEL_PATH}")
+    def load(self, weights_file: str = None):
+        """
+        Loads model weights. If no file is specified, loads the most recent one.
+        """
+        if weights_file:
+            path = os.path.join(C.WEIGHTS_DIR, weights_file)
         else:
-            print(f"No model found at {C.MODEL_PATH}. Starting fresh.")
+            # Find the latest file
+            if not os.path.exists(C.WEIGHTS_DIR) or not os.listdir(C.WEIGHTS_DIR):
+                print("No previous weights found. Starting fresh.")
+                return
+            
+            files = [f for f in os.listdir(C.WEIGHTS_DIR) if f.endswith('.npz')]
+            if not files:
+                print("No .npz files found in weights directory. Starting fresh.")
+                return
+            
+            latest_file = max(files, key=lambda f: os.path.getmtime(os.path.join(C.WEIGHTS_DIR, f)))
+            path = os.path.join(C.WEIGHTS_DIR, latest_file)
 
+        if self.model.load_weights(path):
+            print(f"Loaded weights from {path}")
+        else:
+            print(f"Warning: Could not load weights from {path}. Starting fresh.")
     def _eps_now(self):
         frac = min(1.0, self.total_steps / self.epsilon_decay_steps)
         return C.EPS_START + (C.EPS_END - C.EPS_START) * frac
