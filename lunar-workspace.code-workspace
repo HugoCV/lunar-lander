@@ -1,0 +1,35 @@
+{
+  "folders": [
+    {
+      "path": "backend"
+    },
+    {
+      "path": "frontend"
+    }
+  ],
+  "settings": {
+    "editor.tabSize": 2,
+    "files.exclude": {
+      "**/__pycache__": true,
+      "**/.pytest_cache": true,
+      "**/node_modules": true,
+      "**/.venv": true
+    },
+
+    "[python]": {
+      "editor.formatOnSave": true
+    },
+    "python.defaultInterpreterPath": "backend/env/Scripts/python.exe",
+    "python.analysis.extraPaths": ["backend/app"],
+    "python.analysis.typeCheckingMode": "basic",
+
+    "[javascript]": {
+      "editor.formatOnSave": true
+    },
+    "[typescript]": {
+      "editor.formatOnSave": true
+    },
+    "eslint.workingDirectories": ["frontend"],
+    "typescript.tsdk": "frontend/node_modules/typescript/lib"
+  }
+}

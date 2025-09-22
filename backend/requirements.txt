@@ -1,0 +1,17 @@
+# --- Framework principal ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# --- Lógica de negocio (RL / NumPy) ---
+numpy>=1.26
+
+# --- Entorno de simulación ---
+gymnasium==1.2.0
+box2d-py==2.3.5
+pygame>=2.6.0
+
+# --- Soporte para grabar videos ---
+moviepy>=1.0.3
+
+# --- Utilidades ---
+pydantic>=2.7
